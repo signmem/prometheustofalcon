@@ -1,0 +1,19 @@
+{
+    "debug":true,
+    "logfile": "./app.log",
+    "logmaxage": 432000,
+    "logrotateage": 86400,
+    "grafana": true,
+    "metricserver" :{
+        "enable": true,
+        "server": "http://10.189.208.22",
+        "port": "9222",
+        "metricapi": "/metrics"
+    },
+    "falcon": {
+        "endpoint": "vpass_ceph",
+        "step": 15,
+        "url": "http://127.0.0.1:22230",
+        "api": "/v1/push"
+    }
+}
