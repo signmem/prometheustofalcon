@@ -8,6 +8,14 @@ type GlobalConfig struct {
 	Grafana  		bool 		`json:"grafana"`
 	MetricServer    *MetricDetail 		`json:"metricserver"`
 	Falcon 			*Falcon 	`json:"falcon"`
+	MdsEnable 		bool		`json:"mdsenable"`
+	MdsMetric 		[]*MdsMetric 	`json:"mdsmetric"`
+}
+
+type MdsMetric struct {
+	MetricSum 		string		`json:"metricsum"`
+	MetricCount 	string 		`json:"metriccount"`
+	MetricName		string		`json:"metricname"`
 }
 
 type MetricDetail struct {

@@ -23,6 +23,10 @@ func main() {
 	g.ParseConfig(*cfg)
 	g.Logger = g.InitLog()
 
-	prom.GetProms()
+	go prom.GetProms()
+	// go prom.GetMdsCalAvg()
+
+	g.Logger.Info("program start..")
+
 	select {}
 }

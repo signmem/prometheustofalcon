@@ -53,13 +53,31 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 				metric.Metric = MKmetric(metricName)
 				value := strings.Replace(specialLine[1]," ", "", -1)
 				metric.Value, _ = strconv.ParseFloat(value,  64)
+
 				if metric.Value != metric.Value {
 					continue
 				}
+
+				// use to get mds_sum and dms_count metric info without tag
+
+				if g.Config().MdsEnable {
+					loadMdsName := g.Config().MdsMetric
+					for _, metricDetail := range loadMdsName {
+
+						if metricName == metricDetail.MetricSum ||
+							metricName == metricDetail.MetricCount {
+							g.MdsMetricNew[metricName], _ =
+								strconv.ParseFloat(value,  64)
+						}
+					}
+				}
+
 				allMetric = append(allMetric, metric)
 				continue
 			}
 		}
+
+
 		// fmt.Println(line)
 		totalline.Info, totalline.Value = lineSp[0], strings.Replace(lineSp[1],
 			" ", "", -1)
@@ -75,7 +93,46 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 		metric.Value, _ = strconv.ParseFloat(totalline.Value,  64)
 		// fmt.Println(metric)
 		allMetric = append(allMetric, metric)
+
+
+		// use to get mds_sum and dms_count metric info with tag
+
+		if g.Config().MdsEnable {
+			loadMdsName := g.Config().MdsMetric
+			for _, metricDetail := range loadMdsName {
+
+				if metricName == metricDetail.MetricSum ||
+					metricName == metricDetail.MetricCount {
+
+						metricWithTag := metricName + "@" + tags
+						var metricValue float64
+						metricValue, _ = strconv.ParseFloat(totalline.Value,64)
+
+						if metricValue != metricValue {
+							continue
+						}
+
+						g.MdsMetricNew[metricWithTag] = metricValue
+
+				}
+			}
+		}
+
+
 	}
+
+	GetMdsCalAvg()
+
+	if g.Config().Debug {
+		g.Logger.Infof("new metrics %d, old metrids %d", len(g.MdsMetricNew), len(g.MdsMetricNew))
+	}
+
+	if  len(g.MdsMetricNew) > 0 {
+		g.MdsMetricOld = make(map[string]float64)
+		g.MdsMetricOld  = g.MdsMetricNew
+		g.MdsMetricNew = make(map[string]float64)
+	}
+
 	return allMetric
 }
 
