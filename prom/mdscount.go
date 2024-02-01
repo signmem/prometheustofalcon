@@ -109,7 +109,7 @@ func mdsCalAvg() (metricAvgs []MetricValue){
 		}
 
 
-		/*
+
 		if g.Config().Debug {
 
 			for _, metrics := range metricAvgs {
@@ -117,7 +117,7 @@ func mdsCalAvg() (metricAvgs []MetricValue){
 			}
 
 		}
-		*/
+
 
 	}
 

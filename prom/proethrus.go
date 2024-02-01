@@ -84,13 +84,60 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 
 		lineSp2 := strings.Split(totalline.Info, "{")
 		var tags string
-		metricName, tags := lineSp2[0], lineSp2[1]
-		replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
-		metric.Tags = replacer.Replace(tags)
+		var mdsvalue float64
+		metricName := lineSp2[0]
+		tags = lineSp2[1]
 
-		metric.Metric = MKmetric(metricName)
+		if metricName == "ceph_mds_metadata" {
 
-		metric.Value, _ = strconv.ParseFloat(totalline.Value,  64)
+			metadataSplit := strings.Split(tags, ",")
+
+			if len(metadataSplit) > 0 {
+				for _, keyName := range metadataSplit {
+					splitKey := strings.Split(keyName, "=")
+					if splitKey[0] == "rank" {
+						replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
+						tagsvalue := replacer.Replace(splitKey[1])
+						mdsvalue, _ = strconv.ParseFloat(tagsvalue, 64)
+						metric.Value = mdsvalue
+					}
+
+					if splitKey[0] == "ceph_daemon" {
+						replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
+						tagsvalue := replacer.Replace(splitKey[1])
+						metric.Tags = "ceph_daemon=" + tagsvalue
+						metric.Type = "COUNTER"
+					}
+				}
+				metric.Metric = "ceph_mds_status_change"
+				allMetric = append(allMetric, metric)
+
+
+				if mdsvalue >= 0 {
+					metric.Metric = "ceph_mds_status_active"
+					metric.Value = 1
+				} else {
+					metric.Metric = "ceph_mds_status_backup"
+					metric.Value = 1
+				}
+				metric.Type = "GAUGE"
+				allMetric = append(allMetric, metric)
+				continue
+			}
+		} else {
+
+			replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
+			metric.Tags = replacer.Replace(tags)
+
+			if metricName == "ceph_mgr_status" {
+				metric.Metric = "ceph_mgr_status_change"
+			} else {
+				metric.Metric = MKmetric(metricName)
+			}
+
+			metric.Value, _ = strconv.ParseFloat(totalline.Value,  64)
+		}
+
 		// fmt.Println(metric)
 		allMetric = append(allMetric, metric)
 
@@ -125,6 +172,9 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 
 	if g.Config().Debug {
 		g.Logger.Infof("new metrics %d, old metrids %d", len(g.MdsMetricNew), len(g.MdsMetricNew))
+		for _, detail := range allMetric {
+			g.Logger.Debugf("%s", detail.String())
+		}
 	}
 
 	if  len(g.MdsMetricNew) > 0 {
