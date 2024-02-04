@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/signmem/prometheustofalcon/g"
 	"github.com/signmem/prometheustofalcon/http"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,21 +13,46 @@ import (
 )
 
 func GetMetricFromPrometheus() (allMetric []MetricValue) {
+        // 用于获取 /metrics 信息
+        // 通过 /metrics 中 TYPE 中信息定义 type, 包含 (counter gauge histogram summary) || untyped
+
 	server := g.Config().MetricServer.Server
 	port := g.Config().MetricServer.Port
 	metricAPI := g.Config().MetricServer.MetricAPI
 
-	url := server + ":" + port + metricAPI
-	metricFromHTTP, err := http.HttpApiGet(url, "","")
-	if err != nil {
-		g.Logger.Errorf("GetMetricFromPrometheus() error:%s", err)
-		return
+	var metricFromHTTP io.ReadCloser
+	var err error
+
+	if g.Config().SslEnable == false {
+
+		url := "http://" + server + ":" + port + metricAPI
+		metricFromHTTP, err = http.HttpApiGet(url, "","")
+
+		if err != nil {
+			g.Logger.Errorf("GetMetricFromPrometheus() error:%s", err)
+			return
+		}
+	}
+
+	if g.Config().SslEnable == true {
+
+		url := "https://" + server + ":" + port + metricAPI
+		metricFromHTTP, err = http.HttpsApiGet(url, "")
+
+		if err != nil {
+			g.Logger.Errorf("GetMetricFromPrometheus() error:%s", err)
+			return
+		}
 	}
 
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(metricFromHTTP)
 	newStr := buf.String()
-	responseString := strings.Split( newStr, "\n")
+	responseString := strings.Split(newStr, "\n")
+
+	if g.Config().Debug {
+		g.Logger.Debugf("/metrics respone lines :%d", len(responseString))
+	}
 
 	var metric MetricValue
 	var totalline TotalLine
@@ -38,19 +64,35 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 	metric.Type = "GAUGE"
 
 	for _, line := range responseString {
-		if line == "" ||  strings.Contains(line, "#") {
+
+		if line == ""  {
+			continue
+		}
+
+		// get metrics from line
+		if strings.Contains(line, "#") {
+			r, _ := regexp.Compile("^#\\ +TYPE")
+			if r.MatchString(line) == true {
+				metric_type := strings.ToUpper(line[strings.LastIndex(line, " ") +1:])
+
+				if metric.Type == "UNTYPED" {
+					metric_type = "GAUGE"
+				}
+				metric.Type = metric_type
+			}
+			// ceph /metrics 中有 untype 类型，暂配置称 GAUGE
 			continue
 		}
 
 		lineSp := strings.Split(line, "}")
 
-		//fmt.Println(len(lineSp))
-		// continue
-		if len(lineSp) < 2 {
+		if len(lineSp) == 1 {
+
+			// 只针对不带 tags 的 metrics 进行处理
+
 			specialLine := strings.Split(line, " ")
 			if len(specialLine) == 2  {
 				metricName := specialLine[0]
-				metric.Metric = MKmetric(metricName)
 				value := strings.Replace(specialLine[1]," ", "", -1)
 				metric.Value, _ = strconv.ParseFloat(value,  64)
 
@@ -58,7 +100,7 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 					continue
 				}
 
-				// use to get mds_sum and dms_count metric info without tag
+				// use to get mds_sum and mds_count metric info without tag
 
 				if g.Config().MdsEnable {
 					loadMdsName := g.Config().MdsMetric
@@ -72,19 +114,28 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 					}
 				}
 
+				metric.Metric = MKmetric(metricName)
 				allMetric = append(allMetric, metric)
 				continue
 			}
 		}
 
 
-		// fmt.Println(line)
+		// g.Logger.Debugf("debug test line %s", lineSp)
+		// continue
+
 		totalline.Info, totalline.Value = lineSp[0], strings.Replace(lineSp[1],
 			" ", "", -1)
 
 		lineSp2 := strings.Split(totalline.Info, "{")
+
 		var tags string
 		var mdsvalue float64
+
+		if len(lineSp2) == 0 {
+			continue
+		}
+
 		metricName := lineSp2[0]
 		tags = lineSp2[1]
 
@@ -126,17 +177,17 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 			}
 		} else {
 
-			replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
+			replacer := strings.NewReplacer( "\"", "", "}","")
 			metric.Tags = replacer.Replace(tags)
 
 			if metricName == "ceph_mgr_status" {
 				metric.Metric = "ceph_mgr_status_change"
-			} else {
-				metric.Metric = MKmetric(metricName)
 			}
 
 			metric.Value, _ = strconv.ParseFloat(totalline.Value,  64)
 		}
+
+		metric.Metric = MKmetric(metricName)
 
 		// fmt.Println(metric)
 		allMetric = append(allMetric, metric)
@@ -162,13 +213,13 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 						g.MdsMetricNew[metricWithTag] = metricValue
 
 				}
+
+				GetMdsCalAvg()
 			}
 		}
-
-
 	}
 
-	GetMdsCalAvg()
+
 
 	if g.Config().Debug {
 		g.Logger.Infof("new metrics %d, old metrids %d", len(g.MdsMetricNew), len(g.MdsMetricNew))
@@ -199,19 +250,15 @@ func GetProms() {
 }
 
 func MKmetric(metric string) (newmetric string) {
-	status,_ :=  regexp.MatchString("^ceph*", metric)
-	if status == false {
-		if g.Config().Grafana {
-			newmetric = "ceph." + strings.Replace(metric, "_", ".", -1)
-		} else {
-			newmetric = "ceph_" + metric
-		}
+
+	// 用法: 如果配置了 grafana = true	
+	// 把所有 _ 转换称为 .
+	// prometheus:/metrics 默认 _ 作为连接符，无需处理
+
+	if g.Config().Grafana {
+		newmetric = strings.Replace(metric, "_", ".", -1)
 	} else {
-		if g.Config().Grafana {
-			newmetric = strings.Replace(metric, "_", ".", -1)
-		} else {
-			newmetric = metric
-		}
+		newmetric = metric
 	}
 	return newmetric
 }

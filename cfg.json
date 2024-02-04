@@ -1,14 +1,20 @@
 {
     "debug":true,
-    "logfile": "./app.log",
+    "logfile": "/apps/logs/vip-prometheus-falcon/app.log",
     "logmaxage": 432000,
     "logrotateage": 86400,
-    "grafana": true,
+    "grafana": false,
+    "sslenable": true,
     "metricserver" :{
         "enable": true,
-        "server": "http://10.189.208.22",
+        "server": "10.189.208.22",
         "port": "9222",
         "metricapi": "/metrics"
+    },
+    "tls": {
+        "cafile": "",
+        "certfile": "",
+        "keyfile": ""
     },
     "falcon": {
         "endpoint": "vpass_ceph",

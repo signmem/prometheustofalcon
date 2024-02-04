@@ -1,15 +1,23 @@
 package g
 
 type GlobalConfig struct {
-	Debug			bool		`json:"debug"`
-	LogFile			string		`json:"logfile"`
-	LogMaxAge		int			`json:"logmaxage"`
-	LogRotateAge	int			`json:"logrotateage"`
-	Grafana  		bool 		`json:"grafana"`
-	MetricServer    *MetricDetail 		`json:"metricserver"`
-	Falcon 			*Falcon 	`json:"falcon"`
-	MdsEnable 		bool		`json:"mdsenable"`
+	Debug			bool			`json:"debug"`
+	LogFile			string			`json:"logfile"`
+	LogMaxAge		int				`json:"logmaxage"`
+	LogRotateAge	int				`json:"logrotateage"`
+	Grafana  		bool 			`json:"grafana"`
+	MetricServer    *MetricDetail 	`json:"metricserver"`
+	Falcon 			*Falcon 		`json:"falcon"`
+	SslEnable		bool 			`json:"sslenable"`
+	TLS				*TLS			`json:"tls"`
+	MdsEnable 		bool			`json:"mdsenable"`
 	MdsMetric 		[]*MdsMetric 	`json:"mdsmetric"`
+}
+
+type TLS struct {
+	CaFile 			string 			`json:"cafile"`
+	CertFile 		string 			`json:"certfile"`
+	KeyFile 		string			`json:"keyfile"`
 }
 
 type MdsMetric struct {

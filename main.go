@@ -28,5 +28,26 @@ func main() {
 
 	g.Logger.Info("program start..")
 
+	if g.Config().SslEnable == true {
+
+		_ , err := os.Stat(g.Config().TLS.CaFile)
+
+		if os.IsNotExist(err) {
+			g.Logger.Errorf("%s key not exists", g.Config().TLS.CaFile)
+		}
+
+		_ , err = os.Stat(g.Config().TLS.CertFile)
+
+		if os.IsNotExist(err) {
+			g.Logger.Errorf("%s key not exists", g.Config().TLS.CertFile)
+		}
+
+		_ , err = os.Stat(g.Config().TLS.KeyFile)
+
+		if os.IsNotExist(err) {
+			g.Logger.Errorf("%s key not exists", g.Config().TLS.KeyFile)
+		}
+	}
+
 	select {}
 }

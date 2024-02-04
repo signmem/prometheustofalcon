@@ -3,8 +3,12 @@ package http
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"github.com/signmem/prometheustofalcon/g"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
 	"encoding/json"
@@ -183,5 +187,55 @@ func HttpApiDelete(fullApiUrl string, params string, tokenType string) (io.ReadC
 	} else {
 		return nil, errors.New("HttpApiDelete() resp status code not 200.")
 	}
+}
+
+
+
+func HttpsApiGet(fullApiUrl string, params string) (io.ReadCloser, error) {
+
+	caCert, _ := ioutil.ReadFile(g.Config().TLS.CaFile)
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	cert, err := tls.LoadX509KeyPair(g.Config().TLS.CertFile, g.Config().TLS.KeyFile)
+
+	if err != nil {
+		return nil, err
+	}
+
+	client := &http.Client {
+		Transport: &http.Transport {
+			TLSClientConfig: &tls.Config {
+				RootCAs: caCertPool,
+				Certificates: []tls.Certificate{cert},
+			},
+		},
+	}
+
+	var httpUrl string
+
+	if params != ""  {
+		httpUrl = fullApiUrl + params
+	} else {
+		httpUrl = fullApiUrl
+	}
+
+	resp, err := client.Get(httpUrl)
+
+	if err != nil {
+		return nil, errors.New("HttpsApiGet() https " + httpUrl + " get error with NewRequest")
+	}
+
+	defer resp.Body.Close()
+
+	if ( resp.StatusCode  == 200 ) {
+
+		data, _ := ioutil.ReadAll(resp.Body)
+		respons := ioutil.NopCloser(bytes.NewReader(data))
+		return respons, nil
+	} else {
+		return nil, errors.New("HttpsApiGet() resp status code not 200.")
+	}
+
 }
 
