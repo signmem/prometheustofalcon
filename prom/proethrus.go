@@ -1,27 +1,35 @@
 package prom
 
 import (
-	"bytes"
 	"fmt"
+	"github.com/coreos/go-log/log"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/signmem/prometheustofalcon/g"
 	"github.com/signmem/prometheustofalcon/http"
 	"io"
-	"regexp"
-	"strconv"
+	"io/ioutil"
 	"strings"
 	"time"
 )
 
-func GetMetricFromPrometheus() (allMetric []MetricValue) {
-        // 用于获取 /metrics 信息
-        // 通过 /metrics 中 TYPE 中信息定义 type, 包含 (counter gauge histogram summary) || untyped
+var (
+	STEP  int64
+	HOSTNAME string
+	ValidMetric []string    // 用于过滤并只收集当前 list 中的 metrics 其他 metrics 不需要上报
+	MatchCalMetricList []string	// 用于匹配自身计算用的 metrics, 匹配后，更新 CalMetric 中的值
+	CalMetricDict  []g.MetricCalType	// 用于自身 metrics 计算用的常量，被动更新
+	SumMetrics		[]string  // use to sum metrics values
+	AllMetrics []string   // use to match metrics
+)
+
+func getMetricFromServer() (httpresponse string, err error) {
 
 	server := g.Config().MetricServer.Server
 	port := g.Config().MetricServer.Port
 	metricAPI := g.Config().MetricServer.MetricAPI
 
 	var metricFromHTTP io.ReadCloser
-	var err error
 
 	if g.Config().SslEnable == false {
 
@@ -30,7 +38,7 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 
 		if err != nil {
 			g.Logger.Errorf("GetMetricFromPrometheus() error:%s", err)
-			return
+			return "", err
 		}
 	}
 
@@ -41,224 +49,285 @@ func GetMetricFromPrometheus() (allMetric []MetricValue) {
 
 		if err != nil {
 			g.Logger.Errorf("GetMetricFromPrometheus() error:%s", err)
-			return
+			return "", err
 		}
 	}
 
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(metricFromHTTP)
-	newStr := buf.String()
-	responseString := strings.Split(newStr, "\n")
+	responseBody, err := ioutil.ReadAll(metricFromHTTP)
 
-	if g.Config().Debug {
-		g.Logger.Debugf("/metrics respone lines :%d", len(responseString))
+	return string(responseBody), nil
+}
+
+
+func GetMetricFromPrometheus() (getAllMetric []MetricValue) {
+	// 用于获取 /metrics 信息
+	// 通过 /metrics 中 TYPE 中信息定义 type, 包含 (counter gauge histogram summary) || untyped
+
+	metricsString, err := getMetricFromServer()  // get all info from html
+	if err != nil {
+		return
 	}
+
+	if len(metricsString) == 0 {
+		return
+	}
+
+	getAllMetric, matchMetricDict, err := genMetricFormat(metricsString)
+
+	if err != nil {
+		return
+	}
+
+	if  len(MatchCalMetricList) > 0 && len(CalMetricDict) > 0 {
+		calMatchMetrics := calMatchMetricValues(CalMetricDict, matchMetricDict)
+		getAllMetric = append(getAllMetric, calMatchMetrics...)
+	}
+
+	g.Logger.Debugf("total metrics: %d\n", len(getAllMetric))
+
+	if g.Config().Falcon.Enable {
+		_ = SendMetric(getAllMetric)
+	}
+
+	return
+}
+
+func genMetricFormat(info string) (getAllMetric []MetricValue, matchMetricDict []MetricValue, err error) {
+
+	// getAllMetric  all of the metrics (包含了计算前的 metrics)
+	// matchMetricDict 只包含用于计算用的 metrics 信息
+
+	timestamp := time.Now().Unix()
 
 	var metric MetricValue
-	var totalline TotalLine
 
-	timeNow := time.Now().Unix()
-	metric.Timestamp = timeNow
-	metric.Step = g.Config().Falcon.Step
-	metric.Endpoint = g.Config().Falcon.Endpoint
-	metric.Type = "GAUGE"
+	// totalCountMetric  use to auto sum values
+	var totalCountMetric []MetricValue
 
-	for _, line := range responseString {
+	parser := &expfmt.TextParser{}
+	families, err := parser.TextToMetricFamilies(strings.NewReader(info))
 
-		if line == ""  {
-			continue
-		}
+	if err != nil {
+		log.Errorf("failed to parse input: %w", err)
+		return getAllMetric, matchMetricDict,  err
+	}
 
-		// get metrics from line
-		if strings.Contains(line, "#") {
-			r, _ := regexp.Compile("^#\\ +TYPE")
-			if r.MatchString(line) == true {
-				metric_type := strings.ToUpper(line[strings.LastIndex(line, " ") +1:])
+	for _, val := range families {
 
-				if metric.Type == "UNTYPED" {
-					metric_type = "GAUGE"
-				}
-				metric.Type = metric_type
-			}
-			// ceph /metrics 中有 untype 类型，暂配置称 GAUGE
-			continue
-		}
+		for _, m := range val.GetMetric() {
 
-		lineSp := strings.Split(line, "}")
+			metric.Metric = val.GetName()
 
-		if len(lineSp) == 1 {
-
-			// 只针对不带 tags 的 metrics 进行处理
-
-			specialLine := strings.Split(line, " ")
-			if len(specialLine) == 2  {
-				metricName := specialLine[0]
-				value := strings.Replace(specialLine[1]," ", "", -1)
-				metric.Value, _ = strconv.ParseFloat(value,  64)
-
-				if metric.Value != metric.Value {
+			// 只有自定义需要获取的 metrics 时候才需要执行下面过滤操作
+			// 如果不过滤，则获取所有 metrics
+			if (len(AllMetrics)) > 0 {
+				if g.KeyinSliceWithChar(AllMetrics, metric.Metric) == false {
 					continue
 				}
-
-				// use to get mds_sum and mds_count metric info without tag
-
-				if g.Config().MdsEnable {
-					loadMdsName := g.Config().MdsMetric
-					for _, metricDetail := range loadMdsName {
-
-						if metricName == metricDetail.MetricSum ||
-							metricName == metricDetail.MetricCount {
-							g.MdsMetricNew[metricName], _ =
-								strconv.ParseFloat(value,  64)
-						}
-					}
-				}
-
-				metric.Metric = MKmetric(metricName)
-				allMetric = append(allMetric, metric)
-				continue
 			}
-		}
 
-
-		// g.Logger.Debugf("debug test line %s", lineSp)
-		// continue
-
-		totalline.Info, totalline.Value = lineSp[0], strings.Replace(lineSp[1],
-			" ", "", -1)
-
-		lineSp2 := strings.Split(totalline.Info, "{")
-
-		var tags string
-		var mdsvalue float64
-
-		if len(lineSp2) == 0 {
-			continue
-		}
-
-		metricName := lineSp2[0]
-		tags = lineSp2[1]
-
-		if metricName == "ceph_mds_metadata" {
-
-			metadataSplit := strings.Split(tags, ",")
-
-			if len(metadataSplit) > 0 {
-				for _, keyName := range metadataSplit {
-					splitKey := strings.Split(keyName, "=")
-					if splitKey[0] == "rank" {
-						replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
-						tagsvalue := replacer.Replace(splitKey[1])
-						mdsvalue, _ = strconv.ParseFloat(tagsvalue, 64)
-						metric.Value = mdsvalue
-					}
-
-					if splitKey[0] == "ceph_daemon" {
-						replacer := strings.NewReplacer( "\"", "", "}","", "pool=", "ceph_pool=")
-						tagsvalue := replacer.Replace(splitKey[1])
-						metric.Tags = "ceph_daemon=" + tagsvalue
-						metric.Type = "COUNTER"
-					}
-				}
-				metric.Metric = "ceph_mds_status_change"
-				allMetric = append(allMetric, metric)
-
-
-				if mdsvalue >= 0 {
-					metric.Metric = "ceph_mds_status_active"
-					metric.Value = 1
-				} else {
-					metric.Metric = "ceph_mds_status_backup"
-					metric.Value = 1
-				}
+			// 或者 mertric 对应 values, 根据不同类型进行判定
+			switch val.GetType() {
+			case dto.MetricType_COUNTER:
+				metric.Value = m.GetCounter().GetValue()
+				metric.Type = "COUNTER"
+			case dto.MetricType_GAUGE:
+				metric.Value = m.GetGauge().GetValue()
 				metric.Type = "GAUGE"
-				allMetric = append(allMetric, metric)
+			case dto.MetricType_UNTYPED:
+				metric.Value = m.GetUntyped().GetValue()
+				metric.Type = "GAUGE"
+			case dto.MetricType_SUMMARY:
+				metric.Value = m.GetSummary().GetSampleSum()
+				metric.Type = "SUMMARY"
+			default:
+				// 部分 metrics type unkonw , 暂时作为 gauge type
+				metric.Value = m.GetGauge().GetValue()
+				metric.Type = "GAUGE"
+			}
+
+			metric.Tags = ""
+			var metricTags string
+
+			metric.Metric = val.GetName()
+			metric.Step = STEP
+			metric.Endpoint = HOSTNAME
+			metric.Timestamp = timestamp
+
+			// 获取指标的 metrics
+
+			for n, label := range m.GetLabel() {
+				if n == len(m.Label) - 1 {
+					tag := fmt.Sprintf("%s=%s" , label.GetName(), label.GetValue())
+					metric.Tags = metricTags + tag
+				} else {
+					// 多个 tags 处理方法
+					tag := fmt.Sprintf("%s=%s," , label.GetName(), label.GetValue())
+					metric.Tags = metricTags + tag
+				}
+			}
+
+			// 对需要计算的 metric 进行收集， 放外部进行处理 (matchMetricDict)
+			if (len(MatchCalMetricList) > 0 ){
+				for _, name := range MatchCalMetricList {
+					if name == metric.Metric {
+						matchMetricDict = append(matchMetricDict, metric)
+					}
+				}
+			}
+
+			// 需要对计算 count 总数的 metric 进行处理， 避免过多 metric 进行上报
+			var appendGrap bool
+			if (len(SumMetrics) > 0) {
+				for _, name := range SumMetrics {
+					if metric.Metric == name {
+						totalCountMetric = metricAddSlice(metric, totalCountMetric)
+
+						// not going to send
+						appendGrap = true
+						break
+					}
+				}
+			}
+
+			if appendGrap == true {
 				continue
 			}
-		} else {
 
-			replacer := strings.NewReplacer( "\"", "", "}","")
-			metric.Tags = replacer.Replace(tags)
-
-			if metricName == "ceph_mgr_status" {
-				metric.Metric = "ceph_mgr_status_change"
-			}
-
-			metric.Value, _ = strconv.ParseFloat(totalline.Value,  64)
-		}
-
-		metric.Metric = MKmetric(metricName)
-
-		// fmt.Println(metric)
-		allMetric = append(allMetric, metric)
-
-
-		// use to get mds_sum and dms_count metric info with tag
-
-		if g.Config().MdsEnable {
-			loadMdsName := g.Config().MdsMetric
-			for _, metricDetail := range loadMdsName {
-
-				if metricName == metricDetail.MetricSum ||
-					metricName == metricDetail.MetricCount {
-
-						metricWithTag := metricName + "@" + tags
-						var metricValue float64
-						metricValue, _ = strconv.ParseFloat(totalline.Value,64)
-
-						if metricValue != metricValue {
-							continue
-						}
-
-						g.MdsMetricNew[metricWithTag] = metricValue
-
-				}
-
-				GetMdsCalAvg()
-			}
+			getAllMetric = append(getAllMetric, metric)
 		}
 	}
 
-
+	g.Logger.Debugf("totalCountMetric len:%d\n", len(totalCountMetric))
+	
+	// count metrics 只需要在循环结束后放入 getAllMetric 变量中
+	getAllMetric = append(getAllMetric, totalCountMetric...)
 
 	if g.Config().Debug {
-		g.Logger.Infof("new metrics %d, old metrids %d", len(g.MdsMetricNew), len(g.MdsMetricNew))
-		for _, detail := range allMetric {
-			g.Logger.Debugf("%s", detail.String())
+		for _, metric := range getAllMetric {
+			g.Logger.Debugf("%s", metric.String())
 		}
 	}
 
-	if  len(g.MdsMetricNew) > 0 {
-		g.MdsMetricOld = make(map[string]float64)
-		g.MdsMetricOld  = g.MdsMetricNew
-		g.MdsMetricNew = make(map[string]float64)
-	}
-
-	return allMetric
+	return getAllMetric, matchMetricDict,nil
 }
+
+
+func metricAddSlice(newStruct MetricValue, w []MetricValue)(q []MetricValue) {
+
+	// 用于自动化把 metricValue 加入 []MetricValue
+	// 自动化对 value 进行 sum 计算
+
+	if metricInSlice(newStruct, w) == true {
+		q = metricAddValue(newStruct, w)
+	} else {
+		q = append(w, newStruct)
+	}
+	return q
+}
+
+func metricInSlice(newStruct MetricValue, w []MetricValue) bool {
+	// use to judge metric in []metrics
+
+	for _, info := range w {
+		if info.Metric == newStruct.Metric {
+			return true
+		}
+	}
+	return false
+}
+
+
+func metricAddValue(newStruct MetricValue, w []MetricValue)(q []MetricValue) {
+
+	for _, metric := range w {
+		if metric.Metric == newStruct.Metric {
+			metric.Add(newStruct.Value)
+		}
+		q = append(q, metric)
+	}
+	return
+}
+
 
 
 func GetProms() {
 	for {
-		getAllMetric := GetMetricFromPrometheus()
-		error := SendMetric(getAllMetric)
-		if error != nil {
-			fmt.Println(error)
+
+		if time.Now().Unix() % g.Config().Falcon.Step == 0 {
+			_ = GetMetricFromPrometheus()
 		}
-		time.Sleep(time.Duration(g.Config().Falcon.Step) * time.Second)
+		time.Sleep(time.Duration(1) * time.Second)
 	}
 }
 
-func MKmetric(metric string) (newmetric string) {
+func calMatchMetricValues( calMetricDict []g.MetricCalType,
+	calMetric []MetricValue) (calMatchMetric []MetricValue) {
 
-	// 用法: 如果配置了 grafana = true	
-	// 把所有 _ 转换称为 .
-	// prometheus:/metrics 默认 _ 作为连接符，无需处理
+		// calMetricList = list == prom.MatchCalMetricList
+		// calMetricDict = dict == prom.CalMetricDict
+		// calMetric = 只包含 prom.MatchCalMetricList 中的所有 metrics 信息  
+		// calMatchMetric = 通过计算 metricsum / metriccount 对应的 metricname
 
-	if g.Config().Grafana {
-		newmetric = strings.Replace(metric, "_", ".", -1)
-	} else {
-		newmetric = metric
-	}
-	return newmetric
+		for _, calInfo := range calMetricDict {
+
+			sumName := calInfo.MetricSum
+			var tags []string
+
+			for _, metricInfo := range  calMetric {
+
+				if metricInfo.Metric == sumName {
+
+					if g.KeyinSliceWithChar(tags, metricInfo.Tags) == false {
+						tags = append(tags, metricInfo.Tags)
+					}
+				}
+			}
+
+			for _, tag := range tags {
+
+				var newMetric MetricValue
+				var countName, metricName string
+				var countVale, sumValue interface{}
+
+				for _, info := range calMetricDict {
+
+					if info.MetricSum == sumName {
+						countName = info.MetricCount
+						metricName = info.MetricName
+						break
+					}
+				}
+
+				newMetric.Metric = metricName
+
+				for _, metricInfo := range calMetric {
+					if metricInfo.Metric == sumName && metricInfo.Tags == tag {
+						sumValue = metricInfo.Value
+					}
+
+					if metricInfo.Metric == countName && metricInfo.Tags == tag {
+						countVale = metricInfo.Value
+						newMetric.Endpoint = metricInfo.Endpoint
+						newMetric.Timestamp = metricInfo.Timestamp
+						newMetric.Step = metricInfo.Step
+						newMetric.Type = metricInfo.Type
+					}
+				}
+
+				if g.GetValueToFloat(countVale) == 0 {
+					newMetric.Value = float64(0)
+
+				} else {
+					newMetric.Value = g.GetValueToFloat(sumValue) / g.GetValueToFloat(countVale)
+				}
+
+				newMetric.Tags = tag
+
+				calMatchMetric = append(calMatchMetric, newMetric)
+			}
+
+		}
+
+		return calMatchMetric
 }

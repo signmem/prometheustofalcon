@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func main() {
+func init() {
 	cfg := flag.String("c", "cfg.json", "configuration file")
 	version := flag.Bool("v", false, "show version")
 
@@ -23,8 +23,16 @@ func main() {
 	g.ParseConfig(*cfg)
 	g.Logger = g.InitLog()
 
-	go prom.GetProms()
-	// go prom.GetMdsCalAvg()
+	prom.STEP = g.Config().Falcon.Step
+	prom.HOSTNAME, _ = os.Hostname()
+	prom.ValidMetric = g.LoadMetricJsonFile(g.Config().ValidMetricFile)
+	prom.SumMetrics = g.LoadMetricJsonFile(g.Config().SumMetricFile)
+	prom.MatchCalMetricList, prom.CalMetricDict = g.LoadCalMetricJsonFile(g.Config().CalMetricFile)
+	prom.AllMetrics = append(append(prom.ValidMetric, prom.MatchCalMetricList...),prom.SumMetrics...)
+}
+
+func main() {
+
 
 	g.Logger.Info("program start..")
 
@@ -48,6 +56,9 @@ func main() {
 			g.Logger.Errorf("%s key not exists", g.Config().TLS.KeyFile)
 		}
 	}
+
+	go prom.GetProms()
+	// go prom.GetMdsCalAvg()
 
 	select {}
 }

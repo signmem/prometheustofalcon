@@ -1,14 +1,16 @@
 {
-    "debug":true,
+    "debug": true,
     "logfile": "/apps/logs/vip-prometheus-falcon/app.log",
+    "validmetricfile": "/apps/go/src/github.com/signmem/prometheustofalcon/cephfs.json",
+    "calmetricfile": "/apps/go/src/github.com/signmem/prometheustofalcon/countmetrics.json",
+    "summetricfile": "/apps/go/src/github.com/signmem/prometheustofalcon/summetrics.json",
     "logmaxage": 432000,
     "logrotateage": 86400,
-    "grafana": false,
-    "sslenable": true,
+    "sslenable": false,
     "metricserver" :{
         "enable": true,
-        "server": "10.189.208.22",
-        "port": "9222",
+        "server": "10.189.20.57",
+        "port": "9283",
         "metricapi": "/metrics"
     },
     "tls": {
@@ -17,107 +19,9 @@
         "keyfile": ""
     },
     "falcon": {
-        "endpoint": "vpass_ceph",
-        "step": 15,
+        "enable": false,
+        "step": 60,
         "url": "http://127.0.0.1:22230",
         "api": "/v1/push"
-    },
-    "mdsenable": true,
-    "mdsmetric": [
-        {
-            "metricsum": "ceph_mds_reply_latency_count",
-            "metriccount": "ceph_mds_request",
-            "metricname": "ceph_mds_reply_request_avg"
-        },
-        {
-            "metricsum": "ceph_mds_reply_latency_sum",
-            "metriccount": "ceph_mds_request",
-            "metricname": "ceph_mds_reply_latency_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_create_latency_sum",
-            "metriccount": "ceph_mds_server_req_create_latency_count",
-            "metricname": "ceph_mds_server_req_create_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_getattr_latency_sum",
-            "metriccount": "ceph_mds_server_req_getattr_latency_count",
-            "metricname": "ceph_mds_server_req_getattr_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_getfilelock_latency_sum",
-            "metriccount": "ceph_mds_server_req_getfilelock_latency_count",
-            "metricname": "ceph_mds_server_req_getfilelock_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_lookup_latency_sum",
-            "metriccount": "ceph_mds_server_req_lookup_latency_count",
-            "metricname": "ceph_mds_server_req_lookup_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_lookupino_latency_sum",
-            "metriccount": "ceph_mds_server_req_lookupino_latency_count",
-            "metricname": "ceph_mds_server_req_lookupino_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_lookupname_latency_sum",
-            "metriccount": "ceph_mds_server_req_lookupname_latency_count",
-            "metricname": "ceph_mds_server_req_lookupname_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_lookupparent_latency_sum",
-            "metriccount": "ceph_mds_server_req_lookupparent_latency_count",
-            "metricname": "ceph_mds_server_req_lookupparent_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_mkdir_latency_sum",
-            "metriccount": "ceph_mds_server_req_mkdir_latency_count",
-            "metricname": "ceph_mds_server_req_mkdir_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_mknod_latency_sum",
-            "metriccount": "ceph_mds_server_req_mknod_latency_count",
-            "metricname": "ceph_mds_server_req_mknod_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_open_latency_sum",
-            "metriccount": "ceph_mds_server_req_open_latency_count",
-            "metricname": "ceph_mds_server_req_open_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_readdir_latency_sum",
-            "metriccount": "ceph_mds_server_req_readdir_latency_count",
-            "metricname": "ceph_mds_server_req_readdir_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_rename_latency_sum",
-            "metriccount": "ceph_mds_server_req_rename_latency_count",
-            "metricname": "ceph_mds_server_req_rename_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_rmdir_latency_sum",
-            "metriccount": "ceph_mds_server_req_rmdir_latency_count",
-            "metricname": "ceph_mds_server_req_rmdir_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_rmxattr_latency_sum",
-            "metriccount": "ceph_mds_server_req_rmxattr_latency_count",
-            "metricname": "ceph_mds_server_req_rmxattr_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_setattr_latency_sum",
-            "metriccount": "ceph_mds_server_req_setattr_latency_count",
-            "metricname": "ceph_mds_server_req_setattr_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_setdirlayout_latency_sum",
-            "metriccount": "ceph_mds_server_req_setdirlayout_latency_count",
-            "metricname": "ceph_mds_server_req_setdirlayout_avg"
-        },
-        {
-            "metricsum": "ceph_mds_server_req_setfilelock_latency_sum",
-            "metriccount": "ceph_mds_server_req_setfilelock_latency_count",
-            "metricname": "ceph_mds_server_req_setfilelock_avg"
-        }
-    ]
+    }
 }

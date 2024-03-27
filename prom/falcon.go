@@ -10,14 +10,6 @@ func SendMetric(metrics []MetricValue) (err error) {
 
 	httpUrl := g.Config().Falcon.Url + g.Config().Falcon.Api
 
-	/*
-	if g.Config().Debug {
-		for _, metric := range metrics {
-			g.Logger.Debugf("metric: %s", metric.String())
-		}
-	}
-	*/
-
 	metricsBytes, err := json.Marshal(metrics)
 	if err != nil {
 		g.Logger.Errorf("SendMetric() json error %s", err)

@@ -3,15 +3,15 @@ package g
 type GlobalConfig struct {
 	Debug			bool			`json:"debug"`
 	LogFile			string			`json:"logfile"`
+	ValidMetricFile		string			`json:"validmetricfile"`
+	CalMetricFile		string			`json:"calmetricfile"`
+	SumMetricFile 	string			`json:"summetricfile"`
 	LogMaxAge		int				`json:"logmaxage"`
 	LogRotateAge	int				`json:"logrotateage"`
-	Grafana  		bool 			`json:"grafana"`
 	MetricServer    *MetricDetail 	`json:"metricserver"`
 	Falcon 			*Falcon 		`json:"falcon"`
 	SslEnable		bool 			`json:"sslenable"`
 	TLS				*TLS			`json:"tls"`
-	MdsEnable 		bool			`json:"mdsenable"`
-	MdsMetric 		[]*MdsMetric 	`json:"mdsmetric"`
 }
 
 type TLS struct {
@@ -20,11 +20,11 @@ type TLS struct {
 	KeyFile 		string			`json:"keyfile"`
 }
 
-type MdsMetric struct {
-	MetricSum 		string		`json:"metricsum"`
-	MetricCount 	string 		`json:"metriccount"`
-	MetricName		string		`json:"metricname"`
+type CountMetric struct {
+	Value 			interface{}		`json:"value"`
+	MetricName		string			`json:"metric"`
 }
+
 
 type MetricDetail struct {
 	Enable 			bool 		`json:"enable"`
@@ -34,8 +34,15 @@ type MetricDetail struct {
 }
 
 type Falcon struct {
+	Enable 		bool 		`json:"enable"`
 	Step		int64 		`json:"step"`
-	Endpoint	string		`json:"endpoint"`
 	Url 		string 		`json:"url"`
 	Api 		string 		`json:"api"`
+}
+
+
+type MetricCalType struct {
+	MetricSum	string		`json:"metricsum"`
+	MetricCount	string		`json:"metriccount"`
+	MetricName 	string 		`json:"metricname"`
 }

@@ -1,0 +1,20 @@
+[
+	"ceph_mgr_status",
+	"ceph_mon_quorum_status",
+	"ceph_health_detail",
+	"ceph_cluster_total_used_bytes",
+	"ceph_cluster_total_bytes",
+	"ceph_cluster_total_used_raw_bytes",
+	"ceph_pool_stored_raw",
+	"ceph_pg_active",
+	"ceph_pg_down",
+	"ceph_osd_apply_latency_ms",
+	"ceph_osd_commit_latency_ms",
+	"ceph_pool_rd_bytes",
+	"ceph_pool_wr_bytes",
+	"ceph_pool_rd",
+	"ceph_pool_wr",
+	"ceph_mds_root_rfiles",
+	"ceph_mds_subtrees",
+	"ceph_health_status"
+]
